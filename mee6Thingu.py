@@ -586,10 +586,6 @@ finally:  # For debugging purposes
 
 # addentium:
 #
-# possible persons to add:
-# ~~Autissima#3146~~
-# nvm use this: Omsi#0573
-#
 # TODO: add color and fancy stuff.
 # tip: import colorama
 # thanks a lot to Quon for showing me such a lib exists.
