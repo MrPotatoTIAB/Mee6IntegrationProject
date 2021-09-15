@@ -23,7 +23,12 @@ try:
     # =================================================
 
     # Import modules
-    import requests
+    try:
+        import requests
+    except ModuleNotFoundError:
+        print("The \"requests\" module has not found, this program requires it to run. Press enter to exit...")
+        input()
+        exit()
     import json
     from os.path import isfile
     from os import mkdir
@@ -91,16 +96,15 @@ try:
             if r.status_code == 401:
                 print("This server's leaderboard is private.")
             elif r.status_code == 404:
-                print("Server could not be found in the database.")
+                print("Server could not be found.")
             elif r.status_code == 429:
                 raise TooManyRequestsException(int(r.headers["Retry-After"]))
             elif r.status_code == 500:
                 print("An error occurred on the server side.")
             else:
-                print("An error occurred: {}".format(r.status_code))
-            print("Exiting...")
+                print("An unexpected error occurred: {}".format(r.status_code))
             r.close()
-            exit()
+            return {"error": r.status_code}
 
 
     def get_input(_options='su'):
@@ -109,13 +113,16 @@ try:
         _result = []
         if 's' in _options:
             # Getting server ID from user
-            while True:
+            _iterated = False
+
+            while not _iterated or 'f' in _options:
                 _serverID = input("Enter the ID of the server you want to check.\n>> ")
                 if _serverID.isnumeric():
+                    _result.append(_serverID)
                     break
                 else:
                     print("Invalid ID.\n\n")
-            _result.append(_serverID)
+                _iterated = True
         if 'u' in _options:
             # Getting username from user
             while True:
@@ -127,8 +134,10 @@ try:
             _result.append(_fullUsername)
         if len(_result) > 1:
             return _result
-        else:
+        elif len(_result) == 1:
             return _result[0]
+        else:
+            return
 
 
     def write_config(_options, *args):
@@ -168,6 +177,7 @@ try:
             exit()
 
 
+    # noinspection PyTypeChecker,PyUnresolvedReferences
     def search(_fullUsername=fullUsername):
         print("Searching through the database...")
         _user = None
@@ -177,6 +187,9 @@ try:
         _username, _userID = _fullUsername.split('#')
         while _user is None and _page <= page_limit:
             _data = get_data(_page)
+            if "error" in _data:
+                print("Error while searching user.")
+                break
             for _currentUser in _data["players"]:
                 if _currentUser["username"] == _username and _currentUser["discriminator"] == _userID:
                     print("Found user {usr} in {sv}!".format(usr=_username, sv=_data["guild"]["name"]))
@@ -258,10 +271,15 @@ try:
 
 
     # Update function
+    # noinspection PyUnresolvedReferences
     def update(_page, _index):
         global xpLeft
 
         _data = get_data(_page)
+        if "error" in _data:
+            print("An error occurred while updating.")
+            return
+
         _user = _data["players"][_index]
         _username = _user["username"]
         _rank = _page * 100 + _index + 1
@@ -296,9 +314,13 @@ try:
 
 
     # grind function
+    # noinspection PyUnresolvedReferences
     def grind(_page, _index, _targetLevel):
 
         _data = get_data(_page)
+        if "error" in _data:
+            print("An error occurred while updating.")
+            return
         _user = _data["players"][_index]
         _totalXp = _user["xp"]
         _targetXp = totalReqExpFormula(_targetLevel)
@@ -323,8 +345,12 @@ try:
 
 
     # for testing purposes
+    # noinspection PyUnresolvedReferences
     def test():
         _data = get_data(0)
+        if "error" in _data:
+            print("Error.")
+            return
         _user = _data["players"][0]
         if totalReqExpFormula(_user["level"]) == _user["xp"] - _user["detailed_xp"][0]:
             print("success!")
@@ -387,11 +413,18 @@ try:
                 elif _selection == "new":
                     _isNew = True
                     _result = get_input('s')
-                    write_config('u', {CFG_IS_TEMP: False})
+                    if _result is None:
+                        continue
                     generateLink(_result)
                     _linkGenerated = True
                     _selection = get_data(_options='s')
-                    break
+                    if "error" in _selection:
+                        _linkGenerated = False
+                        _isNew = False
+                    else:
+                        write_config('u', {CFG_IS_TEMP: True})
+                        _success = True
+                        break
                 elif not _selection.isnumeric():
                     print("You need to enter a number.")
                 elif int(_selection) >= len(config[CFG_SAVED_SERVERS]):
@@ -401,23 +434,25 @@ try:
                     _success = True
                     break
                 _iterated = True
-            if not _isNew:
-                write_config('u', {CFG_LAST_SERVER: _selectionList[int(_selection)]})
+            if _success:
+                if not _isNew:
+                    write_config('u', {CFG_LAST_SERVER: _selectionList[int(_selection)]})
+                else:
+                    write_config('u', {CFG_LAST_SERVER: _selection, CFG_TEMP_SERVER: _result})
+                print("You've selected {}.".format(config[CFG_LAST_SERVER]))
+                generateLink(_result)
+                if config[CFG_LAST_USER] == "":
+                    print("No users found to search, requesting one...")
+                    select('uf')
+                if config[CFG_IS_TEMP] or config[CFG_LAST_SERVER] not in config[CFG_SAVED_USERS][config[CFG_LAST_USER]]:
+                    print((config[CFG_IS_TEMP] and "The user wasn't saved, " or "The user can't be found in the config, ") + "searching on the Mee6 database...")
+                    # page, index = search(config[CFG_LAST_USER])
+                    config[CFG_IS_TEMP] or write_config('u', {CFG_IS_TEMP: True})
+                else:
+                    page, index = config[CFG_SAVED_USERS][config[CFG_LAST_USER]][config[CFG_LAST_SERVER]]
+                    print("Server has been switched successfully")
             else:
-                write_config('u', {CFG_LAST_SERVER: _selection, CFG_TEMP_SERVER: _result})
-            print("You've selected {}.".format(config[CFG_LAST_SERVER]))
-            generateLink(_result)
-            if config[CFG_LAST_USER] == "":
-                print("No users found to search, requesting one...")
-                select('uf')
-            if config[CFG_IS_TEMP] or config[CFG_LAST_SERVER] not in config[CFG_SAVED_USERS][config[CFG_LAST_USER]]:
-                print((config[CFG_IS_TEMP] and "The user wasn't saved, " or "The user can't be found in the config, ") + "searching on the Mee6 database...")
-                # page, index = search(config[CFG_LAST_USER])
-                config[CFG_IS_TEMP] or write_config('u', {CFG_IS_TEMP: True})
-            else:
-                page, index = config[CFG_SAVED_USERS][config[CFG_LAST_USER]][config[CFG_LAST_SERVER]]
-                print("Server has been switched successfully")
-            _success or print("Exiting...")
+                print("Exiting...")
 
 
 
@@ -482,87 +517,102 @@ try:
 
 
     def help_command():
-        print("maybe i'll add it one day.")
+        print('"update [-n | -a | -l]": Updates from database and shows your rank.\n'
+              'Options: "-n": Shows the level of the person next in the leaderboard.\n'
+              '         "-a": Automatically updates every minute.\n'
+              '         "-l (integer)": Shows required exp and percentage for the level you\'ve specified.\n\n'
+              '"exit [option]": Exits from program.\n'
+              'Aliases: "quit"\n'
+              'Options: "-w": You\'ll be prompted to enter new user and server ID on next start.\n\n'
+              '"select (-u | -s)": Allows you to select a saved or new user or server.\n'
+              'Options: "-u": Selects a user.\n'
+              '         "-s": Selects a server.\n\n'
+              '"help": Pretty self explanatory, isn\'t it?\n\n'
+              '"save": Allows you to save the current user and server.\n\n'
+              'Pro tip: Sending a blank line runs the previous command you\'ve used.')
         pass  # TODO make help section
 
 
     # =================================================
     # =                Shell Loop                     =
     # =================================================
-
-    prevTime = time()
-    page, index = initialize()
-    while True:
-        inp = input(">> ").split(" ")
-        if inp[0] == "" and prevInp is not None:
-            inp = prevInp
-        prevInp = inp
-        if inp[0] == "update":
-            update(page, index)
-        elif inp[0] in ["exit", "quit"]:
-            if "-w" in inp:
-                write_config('u', {CFG_IS_TEMP: True})
-            print("Exiting...")
-            exit()
-        elif inp[0] == "nextrank":
-            if index < 1:
-                if page < 1:
-                    print("You're already number one.")
+    if __name__ == "__main__":
+        prevTime = time()
+        page, index = initialize()
+        while True:
+            inp = input(">> ").split(" ")
+            if inp[0] == "" and prevInp is not None:
+                inp = prevInp
+            prevInp = inp
+            if inp[0] == "update":
+                if len(inp) > 1:
+                    if inp[1] == "-n":
+                        if index < 1:
+                            if page < 1:
+                                print("You're already number one.")
+                            else:
+                                update(page - 1, 99)
+                        else:
+                            update(page, index - 1)
+                    elif inp[1] == "-a":
+                        if "keyboard" not in disabledModules:
+                            while True:
+                                if timeLeft <= 0:
+                                    timeLeft = interval
+                                    update(page, index)
+                                    # if xpLeft <= 100:  # TODO Alarm is currently under-construct
+                                    #     for i in range(5):
+                                    #         winsound.PlaySound(soundFile,
+                                    #                            winsound.SND_FILENAME ^ winsound.SND_ASYNC ^ winsound.SND_NODEFAULT)
+                                else:
+                                    tempTime = time()  # delta time :>
+                                    timeLeft -= tempTime - prevTime
+                                    prevTime = tempTime
+                                if kb.is_pressed(exitKey):
+                                    break
+                        else:
+                            print("The module \"keyboard\" required to use this feature.")
+                    elif inp[1] == "-l":
+                        if len(inp) > 2 and inp[2].isdecimal():
+                            grind(page, index - 1, int(inp[2]))
+                        else:
+                            print("Invalid argument: " + (len(inp) > 2 and f"{inp[2]}" or "Missing argument."))
+                    else:
+                        print(f"Invalid argument: \"{inp[1]}\"")
                 else:
-                    update(page - 1, 99)
-            else:
-                update(page, index - 1)
-        elif inp[0] == "autoupdate":
-            while True:
-                if timeLeft <= 0:
-                    timeLeft = interval
                     update(page, index)
-                    # if xpLeft <= 100:  # TODO Alarm is currently under-construct
-                    #     for i in range(5):
-                    #         winsound.PlaySound(soundFile,
-                    #                            winsound.SND_FILENAME ^ winsound.SND_ASYNC ^ winsound.SND_NODEFAULT)
+            elif inp[0] in ["exit", "quit"]:
+                if "-w" in inp:
+                    write_config('u', {CFG_IS_TEMP: True})
+                print("Exiting...")
+                exit()
+            elif inp[0] == "test":
+                test()
+            elif inp[0] == "select":
+                if len(inp) < 2:
+                    print("Not enough parameters.")
+                elif inp[1] == "-u":
+                    select("u")
+                elif inp[1] == "-s":
+                    select("s")
                 else:
-                    tempTime = time()  # delta time :>
-                    timeLeft -= tempTime - prevTime
-                    prevTime = tempTime
-                if kb.is_pressed(exitKey):
-                    break
-        elif inp[0] == "grind":
-            print("Input which level you want to grind to (to exit, press enter): ", end="")
-            while True:
-                subInp = input()
-                if subInp == "":
-                    break
-                elif not subInp.isdecimal():
-                    print("You need to enter an integer.")
+                    print(f"Invalid argument: {inp[1]}")
+            elif inp[0] == "spam":
+                print("THIS ONLY FOR DEBUG PURPOSES, ONLY USE WHEN DEVELOPER SAID SO."
+                      "\nDo you want to proceed? y/n")
+                secInp = input(">> ")
+                if secInp == 'y':
+                    spam()
+                elif secInp == 'n':
+                    print("Aborting...")
                 else:
-                    grind(page, index - 1, int(subInp))
-                    break
-        elif inp[0] == "test":
-            test()
-        elif inp[0] == "select":
-            if len(inp) < 2:
-                print("Not enough parameters.")
-            elif inp[1] == "-u":
-                select("u")
-            elif inp[1] == "-s":
-                select("s")
-        elif inp[0] == "spam":
-            print("THIS ONLY FOR DEBUG PURPOSES, ONLY USE WHEN DEVELOPER SAID SO."
-                  "\nDo you want to proceed? y/n")
-            secInp = input(">> ")
-            if secInp == 'y':
-                spam()
-            elif secInp == 'n':
-                print("Aborting...")
+                    print("Unknown option, assuming as no...")
+            elif inp[0] == "help":
+                help_command()
+            elif inp[0] == "save":
+                save()
             else:
-                print("Unknown option, assuming as no...")
-        elif inp[0] == "help":
-            help_command()
-        elif inp[0] == "save":
-            save()
-        else:
-            print("Unknown command. Type \"help\" for commands.")
+                print("Unknown command. Type \"help\" for commands.")
 
 
 # Exiting the program
@@ -575,11 +625,12 @@ except Exception as error:
           "Please report this bug to developer...")
     raise error
 finally:  # For debugging purposes
-    from time import sleep
-    for i in range(3):
-        print('.', end="")
-        sleep(1)
-    print()
+    if __name__ == "__main__":
+        from time import sleep
+        for i in range(3):
+            print('.', end="")
+            sleep(1)
+        print()
 #     breakpoint()
 #     pass
 
