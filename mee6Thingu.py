@@ -299,9 +299,9 @@ try:
                                     lvl=_currentLevel,
                                     nlvl=_currentLevel + 1,
                                     rnk=_rank,
-                                    amsg=floor(xpLeft / 20),
-                                    wmsg=floor(xpLeft / 15),
-                                    bmsg=floor(xpLeft / 25)))
+                                    amsg=floor(xpLeft / 20) + 1,
+                                    wmsg=floor(xpLeft / 15) + 1,
+                                    bmsg=floor(xpLeft / 25) + 1))
 
 
     # exp calculation formulas
