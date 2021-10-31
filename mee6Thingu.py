@@ -207,7 +207,7 @@ try:
 
 
     # Initialization function
-    def initialize():
+    def initialize(_serverID=None, _fullUsername=None):
         print("Starting initialization...")
 
         _linkGenerated = False
@@ -215,38 +215,44 @@ try:
         global link
 
         # breakpoint()
-        config = read_config()
+        if __name__ == "__main__":
+            config = read_config()
 
-        if config[CFG_RETRY_AFTER] > time():
-            raise TooManyRequestsException(config[CFG_RETRY_AFTER] - time())
+            if config[CFG_RETRY_AFTER] > time():
+                raise TooManyRequestsException(config[CFG_RETRY_AFTER] - time())
 
-        if config[CFG_IS_TEMP]:
-            write_config('u', {CFG_LAST_USER: "", CFG_LAST_SERVER: "", CFG_IS_TEMP: False})
+            if config[CFG_IS_TEMP]:
+                write_config('u', {CFG_LAST_USER: "", CFG_LAST_SERVER: "", CFG_IS_TEMP: False})
 
-        if config[CFG_TEMP_SERVER] != -1:
-            write_config('u', {CFG_TEMP_SERVER: -1})
+            if config[CFG_TEMP_SERVER] != -1:
+                write_config('u', {CFG_TEMP_SERVER: -1})
 
-        if config[CFG_LAST_SERVER] != "":
-            print("Found server ID from config!")
+            if config[CFG_LAST_SERVER] != "":
+                print("Found server ID from config!")
+            else:
+                print("Couldn't found a server ID, requesting one...")
+                _linkGenerated = select('s')
+
+            _linkGenerated or generateLink(config[CFG_SAVED_SERVERS][config[CFG_LAST_SERVER]])
+
+            if config[CFG_LAST_USER] != "":
+                print("Found username in config!")
+            else:
+                print("Couldn't find an username, requesting one...")
+                select("u")
+            # if fullUsername in config[CFG_SAVED_USERS] and len(config[CFG_SAVED_USERS][fullUsername]) >= config[CFG_LAST_SERVER]:
+            if config[CFG_LAST_USER] != "" and not config[CFG_IS_TEMP] and config[CFG_LAST_SERVER] in config[CFG_SAVED_USERS][config[CFG_LAST_USER]]:
+                # noinspection PyTypeChecker
+                _page, _index = config[CFG_SAVED_USERS][config[CFG_LAST_USER]][config[CFG_LAST_SERVER]]
+            else:
+                _page, _index = search(config[CFG_LAST_USER])
         else:
-            print("Couldn't found a server ID, requesting one...")
-            _linkGenerated = select('s')
+            generateLink(_serverID)
+            _page, _index = search(_fullUsername)
 
-        _linkGenerated or generateLink(config[CFG_SAVED_SERVERS][config[CFG_LAST_SERVER]])
-
-        if config[CFG_LAST_USER] != "":
-            print("Found username in config!")
-        else:
-            print("Couldn't find an username, requesting one...")
-            select("u")
-        # if fullUsername in config[CFG_SAVED_USERS] and len(config[CFG_SAVED_USERS][fullUsername]) >= config[CFG_LAST_SERVER]:
-        if config[CFG_LAST_USER] != "" and not config[CFG_IS_TEMP] and config[CFG_LAST_SERVER] in config[CFG_SAVED_USERS][config[CFG_LAST_USER]]:
-            # noinspection PyTypeChecker
-            _page, _index = config[CFG_SAVED_USERS][config[CFG_LAST_USER]][config[CFG_LAST_SERVER]]
-        else:
-            _page, _index = search(config[CFG_LAST_USER])
+        _rank = combine_rank(_page, _index)
         print("Initialization completed!")
-        return _page, _index
+        return _rank
 
         # if len(sys.argv) == 1:  # Checks if it has not run with parameters
         # RUNNING THE PROGRAM WITH PARAMETERS ARE UNUSED, USE CONFIG FILE INSTEAD
@@ -281,27 +287,25 @@ try:
             return
 
         _user = _data["players"][_index]
-        _username = _user["username"]
+        _server = _data["guild"]
+        _xpDetails = _user["detailed_xp"]
         _rank = _page * 100 + _index + 1
-        _xpUntilLevelUp = _user["detailed_xp"][1]
-        _currentLevelXp = _user["detailed_xp"][0]
-        _currentLevel = _user["level"]
-        _serverName = _data["guild"]["name"]
-        xpLeft = _xpUntilLevelUp - _currentLevelXp
+        return _user, _server, _xpDetails, _rank
 
-        print("{usr} from {sv}\n\nYou're currently level {lvl} and #{rnk}. \
-        \nYou need {xp} exp more to advance to level {nlvl}.\
-        \nEstimated required messages: {amsg}\
-        \nWorst case: {wmsg}\
-        \nBest case: {bmsg}".format(usr=_username,
-                                    sv=_serverName,
-                                    xp=xpLeft,
-                                    lvl=_currentLevel,
-                                    nlvl=_currentLevel + 1,
-                                    rnk=_rank,
-                                    amsg=floor(xpLeft / 20) + 1,
-                                    wmsg=floor(xpLeft / 15) + 1,
-                                    bmsg=floor(xpLeft / 25) + 1))
+    def update(_rank):
+        global xpLeft
+        _page, _index = split_rank(_rank)
+
+        _data = get_data(_page)
+        if "error" in _data:
+            print("An error occurred while updating.")
+            return
+
+        _user = _data["players"][_index]
+        _server = _data["guild"]
+        _xpDetails = _user["detailed_xp"]
+        _rank = _page * 100 + _index + 1
+        return _user, _server, _xpDetails, _rank
 
 
     # exp calculation formulas
@@ -315,7 +319,9 @@ try:
 
     # grind function
     # noinspection PyUnresolvedReferences
-    def grind(_page, _index, _targetLevel):
+    def grind(_rank, _targetLevel):
+        _page, _index = split_rank(_rank)
+
 
         _data = get_data(_page)
         if "error" in _data:
@@ -366,8 +372,20 @@ try:
 
 
     # Show rank function
-    def show_rank(_serverName=None, _xpLeft=None, _level=None, _rank=None):
-        pass  # TODO add a show rank function instead showing it in update function
+    def show_rank(_username=None, _serverName=None, _xpLeft=None, _level=None, _rank=None):
+        print("{usr} from {sv}\n\nYou're currently level {lvl} and #{rnk}. \
+                \nYou need {xp} exp more to advance to level {nlvl}.\
+                \nEstimated required messages: {amsg}\
+                \nWorst case: {wmsg}\
+                \nBest case: {bmsg}".format(usr=_username,
+                                            sv=_serverName,
+                                            xp=_xpLeft,
+                                            lvl=_level,
+                                            nlvl=_level + 1,
+                                            rnk=_rank,
+                                            amsg=floor(_xpLeft / 20) + 1,
+                                            wmsg=floor(_xpLeft / 15) + 1,
+                                            bmsg=floor(_xpLeft / 25) + 1))
 
 
     # save to config function
@@ -477,6 +495,7 @@ try:
                 elif _selection == "new":
                     _result = get_input('u')
                     write_config('u', {CFG_LAST_USER: _result, CFG_IS_TEMP: True})
+                    page, index = search(_result)
                     _success = True
                     break
                 elif not _selection.isnumeric():
@@ -533,12 +552,22 @@ try:
         pass  # TODO make help section
 
 
+    def split_rank(_rank):
+        _page = _rank // 100
+        _index = (_rank % 100) - 1
+        return _page, _index
+
+    def combine_rank(_page, _index):
+        return _page * 100 + _index + 1
+
+
     # =================================================
     # =                Shell Loop                     =
     # =================================================
     if __name__ == "__main__":
         prevTime = time()
-        page, index = initialize()
+        rank = initialize()
+        page, index = split_rank(rank)
         while True:
             inp = input(">> ").split(" ")
             if inp[0] == "" and prevInp is not None:
@@ -548,18 +577,15 @@ try:
                 if len(inp) > 1:
                     if inp[1] == "-n":
                         if index < 1:
-                            if page < 1:
-                                print("You're already number one.")
-                            else:
-                                update(page - 1, 99)
+                            print("You're already number one.")
                         else:
-                            update(page, index - 1)
+                            update(rank - 1)
                     elif inp[1] == "-a":
                         if "keyboard" not in disabledModules:
                             while True:
                                 if timeLeft <= 0:
                                     timeLeft = interval
-                                    update(page, index)
+                                    update(rank)
                                     # if xpLeft <= 100:  # TODO Alarm is currently under-construct
                                     #     for i in range(5):
                                     #         winsound.PlaySound(soundFile,
@@ -574,13 +600,13 @@ try:
                             print("The module \"keyboard\" required to use this feature.")
                     elif inp[1] == "-l":
                         if len(inp) > 2 and inp[2].isdecimal():
-                            grind(page, index - 1, int(inp[2]))
+                            grind(rank-1, int(inp[2]))
                         else:
                             print("Invalid argument: " + (len(inp) > 2 and f"{inp[2]}" or "Missing argument."))
                     else:
                         print(f"Invalid argument: \"{inp[1]}\"")
                 else:
-                    update(page, index)
+                    _user, _server, _xp, _rank = update(rank)
             elif inp[0] in ["exit", "quit"]:
                 if "-w" in inp:
                     write_config('u', {CFG_IS_TEMP: True})
