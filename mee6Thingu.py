@@ -278,6 +278,10 @@ try:
 
     # Update function
     # noinspection PyUnresolvedReferences
+
+    # update()
+    # Returns info of user using its rank.
+    # return _user, _server, _xpDetails, _rank
     def update(_rank):
         global xpLeft
         _page, _index = split_rank(_rank)
@@ -290,7 +294,6 @@ try:
         _user = _data["players"][_index]
         _server = _data["guild"]
         _xpDetails = _user["detailed_xp"]
-        _rank = _page * 100 + _index + 1
         return _user, _server, _xpDetails, _rank
 
 
@@ -560,18 +563,19 @@ try:
                 inp = prevInp
             prevInp = inp
             if inp[0] == "update":
+                _args = None
                 if len(inp) > 1:
                     if inp[1] == "-n":
                         if index < 1:
                             print("You're already number one.")
                         else:
-                            update(rank - 1)
+                            _args = update(rank - 1)
                     elif inp[1] == "-a":
                         if "keyboard" not in disabledModules:
                             while True:
                                 if timeLeft <= 0:
                                     timeLeft = interval
-                                    update(rank)
+                                    _args = update(rank)
                                     # if xpLeft <= 100:  # TODO Alarm is currently under-construct
                                     #     for i in range(5):
                                     #         winsound.PlaySound(soundFile,
@@ -592,7 +596,14 @@ try:
                     else:
                         print(f"Invalid argument: \"{inp[1]}\"")
                 else:
-                    _user, _server, _xp, _rank = update(rank)
+                    _args = update(rank)
+                if _args is not None:
+                    _user, _server, _xp, _rank = _args
+                    _username = _user["username"]
+                    _serverName = _server["name"]
+                    _xpLeft = _xp[1] - _xp[0]
+                    _level = _user["level"]
+                    show_rank(_username, _serverName, _xpLeft, _level, _rank)
             elif inp[0] in ["exit", "quit"]:
                 if "-w" in inp:
                     write_config('u', {CFG_IS_TEMP: True})
