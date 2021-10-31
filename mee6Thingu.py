@@ -278,20 +278,6 @@ try:
 
     # Update function
     # noinspection PyUnresolvedReferences
-    def update(_page, _index):
-        global xpLeft
-
-        _data = get_data(_page)
-        if "error" in _data:
-            print("An error occurred while updating.")
-            return
-
-        _user = _data["players"][_index]
-        _server = _data["guild"]
-        _xpDetails = _user["detailed_xp"]
-        _rank = _page * 100 + _index + 1
-        return _user, _server, _xpDetails, _rank
-
     def update(_rank):
         global xpLeft
         _page, _index = split_rank(_rank)
